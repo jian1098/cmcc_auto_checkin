@@ -114,8 +114,9 @@ def do_sign(cookie, index):
         month_total = cat.get("valueDesc") or (str(cat.get("totalValue", "?"))
                                                + str(cat.get("unit") or ""))
         return True, "签到成功，获得「%s」，本月累计 %s" % (prize, month_total)
-    if code == "TODAY_MARKED":
-        return True, "今日已签到（重复触发，幂等跳过）"
+    if code in ("ALL_MARKED", "TODAY_MARKED"):
+        return True, "今日已签到，名额已全部领完（幂等跳过）" if code == "ALL_MARKED" \
+            else "今日已签到（重复触发，幂等跳过）"
     return False, "签到失败：code=%s，msg=%s" % (code or "无", body.get("msg") or text[:120])
 
 # ----------------------------- 飞书推送 -----------------------------
@@ -128,7 +129,10 @@ def push_feishu(webhook, sections, overall_ok):
     for name, line in sections:
         if lines:
             lines.append("")
-        lines += ["**%s**" % name, line]
+        if name:
+            lines += ["**%s**" % name, line]
+        else:
+            lines += [line]
     payload = {
         "msg_type": "interactive",
         "card": {
@@ -189,11 +193,12 @@ def main():
 
     sections = []
     overall_ok = True
+    single = len(cookies) == 1
     for i, cookie in enumerate(cookies):
-        name = "账号 %d（%s）" % (i + 1, masked(cookie))
-        log("[%s] 开始签到…" % name)
+        name = "" if single else "账号 %d（%s）" % (i + 1, masked(cookie))
+        log("[%s] 开始签到…" % ("单账号" if single else name))
         ok, summary = do_sign(cookie, i)
-        log("[%s] %s" % (name, summary))
+        log("[%s] %s" % ("单账号" if single else name, summary))
         sections.append((name, summary))
         if not ok:
             overall_ok = False
@@ -203,7 +208,7 @@ def main():
         try:
             with open(RESULT_FILE, "w", encoding="utf-8") as f:
                 for name, line in sections:
-                    f.write("- %s：%s\n" % (name, line))
+                    f.write(("- %s：%s\n" % (name, line)) if name else "- %s\n" % line)
         except OSError as e:
             log("写入结果文件失败：%s" % e)
 
