@@ -1,0 +1,14 @@
+{
+  "accounts": [
+    {
+      "provinceCode": "200",
+      "cityCode": "0759",
+      "appVersionCode": "12.5.7",
+      "userCheckId": "44385a489",
+      "carrierOperator": "002",
+      "jwtToken": null,
+      "token": "JSESSIONID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx; UID=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; Comment=SessionServer-unity; Path=/;HTTPOnly; ticketID=SuZhou; Secure",
+      "took": 251
+    }
+  ]
+}

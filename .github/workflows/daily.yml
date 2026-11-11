@@ -25,10 +25,13 @@ jobs:
       - name: 检出仓库
         uses: actions/checkout@v4
 
+      - name: 安装依赖
+        run: python3 -m pip install --user -r requirements.txt
+
       - name: 执行中国移动签到并推送飞书
         id: run
         env:
-          CMCC_COOKIE: ${{ secrets.CMCC_COOKIE }}
+          CMCC_ACCOUNTS: ${{ secrets.CMCC_ACCOUNTS }}
           FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
           RESULT_FILE: ${{ runner.temp }}/cmcc_result.txt
         run: |
