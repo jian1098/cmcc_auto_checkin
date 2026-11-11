@@ -171,6 +171,8 @@ class Account:
         self.app_version_code = raw.get("app_version_code", "12.5.2")
         self.activity_id = g("activity_id", "1021122301")
         self.channel_id = g("channel_id", "P00000109876")
+        # 周三充值日抢券 constId 覆盖（可选，缺省动态提取/抓包兜底）
+        self.wed_const_id = raw.get("wed_const_id") or raw.get("constId") or ""
         # 供扩展模块/通知使用的配置文件路径
         self.config_path = ""
 
@@ -303,8 +305,12 @@ def save_jwt_cache(acc: Account, jwt: str | None):
         pass
 
 
-def exchange_session(acc: Account) -> tuple[requests.Session, str]:
+def exchange_session(acc: Account, act_url: str | None = None) -> tuple[requests.Session, str]:
     """走 SSO 换取活动会话（QWHD_SESSION_TOKEN 落在 session cookie 里）。
+
+    act_url 缺省用主签到活动页；其他活动（如 hlwyxhdhub 的周三充值日）传入
+    各自的页面地址即可——同一 jwt 跨 hub 通用，只是不同 hub 落不同令牌名
+    （qwhdhub → QWHD_SESSION_TOKEN，hlwyxhdhub → HLWHD_SESSION_TOKEN）。
 
     返回 (session, referer)。referer 是带 token 的活动页地址，后续 API 都要带。
 
@@ -319,7 +325,7 @@ def exchange_session(acc: Account) -> tuple[requests.Session, str]:
     s.headers.update({"user-agent": USER_AGENT, "accept-language": "zh-CN,zh-Hans;q=0.9"})
 
     # ① 登录中转页，提取一次性 sid
-    r = s.get(SSO_LOGIN, params={"dlwmh": "true", "actUrl": acc.act_url}, timeout=REQUEST_TIMEOUT)
+    r = s.get(SSO_LOGIN, params={"dlwmh": "true", "actUrl": act_url or acc.act_url}, timeout=REQUEST_TIMEOUT)
     r.raise_for_status()
     m_app = re.search(r"loginPath\s*=\s*'([^']+)'", r.text)
     if not m_app:
@@ -543,7 +549,7 @@ def run_account(acc: Account, dry_run: bool, claim: bool) -> tuple[bool, list[st
 
 # ---------------------------------------------------------------- 通知
 
-def push_feishu(sections, overall_ok):
+def push_feishu(sections, overall_ok, title="中国移动每日签到"):
     """推送到飞书自定义机器人。sections: [(账号名, [文案行...]), ...]。"""
     color = "green" if overall_ok else "red"
     lines = []
@@ -561,8 +567,7 @@ def push_feishu(sections, overall_ok):
             "header": {
                 "template": color,
                 "title": {"tag": "plain_text",
-                          "content": "中国移动每日签到 · %s"
-                                     % ("成功" if overall_ok else "有失败项")},
+                          "content": "%s · %s" % (title, "成功" if overall_ok else "有失败项")},
             },
             "elements": [{"tag": "div",
                           "text": {"tag": "lark_md", "content": "\n".join(lines)}}],
@@ -598,6 +603,14 @@ def main() -> int:
                         help="签到后自动领取累计/连签奖励（默认开启）")
     parser.add_argument("--no-claim", dest="claim", action="store_false", help="跳过领奖，只签到")
     parser.add_argument("--delay", type=int, default=0, metavar="N", help="启动前随机延迟 0~N 秒")
+    # ---- 周三充值日抢券（--wed 专用模式，代替每日签到）----
+    parser.add_argument("--wed", action="store_true",
+                        help="周三充值日抢券模式（hlwyxhdhub drawPrize），代替每日签到")
+    parser.add_argument("--at", default=None, help="抢券场次时间（服务器时间，如 08:00:00）")
+    parser.add_argument("--force", action="store_true", help="目标日非周三也强制等待开抢")
+    parser.add_argument("--lead", type=float, default=0.4, help="抢券提前开火秒数（默认 0.4）")
+    parser.add_argument("--interval", type=float, default=0.35, help="抢券连发间隔秒（默认 0.35）")
+    parser.add_argument("--max-attempts", type=int, default=120, help="抢券最多连发次数（默认 120）")
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -637,6 +650,47 @@ def main() -> int:
             log.error("[%s] %s", tag, err)
         log.error("参考 config.example.json 填写，或设置对应环境变量")
         return 1
+
+    # --wed：周三充值日抢券专用模式（代替每日签到）
+    if args.wed:
+        try:
+            import cmcc_wed
+        except ImportError:
+            log.error("未找到 cmcc_wed.py，无法执行周三充值日抢券")
+            return 1
+        sections = []
+        overall_ok = True
+        single = len(accounts) == 1
+        for acc in accounts:
+            name = "" if single else acc.tag
+            log.info("[%s] 周三充值日抢券…", name or "单账号")
+            try:
+                lines = cmcc_wed.seckill_run(
+                    acc, dry_run=args.dry_run, at=args.at, lead=args.lead,
+                    interval=args.interval, max_attempts=args.max_attempts,
+                    force=args.force)
+                ok = True   # 未命中/库存不足属正常结果，不算失败
+            except Exception as e:
+                log.exception("[%s] 执行失败: %s", acc.tag, e)
+                ok, lines = False, [f"执行异常: {e}"]
+            log.info("[%s] 结果：\n%s", acc.tag, "\n".join(lines))
+            sections.append((name, lines))
+            if not ok:
+                overall_ok = False
+        if RESULT_FILE:
+            try:
+                with open(RESULT_FILE, "w", encoding="utf-8") as f:
+                    for name, lines in sections:
+                        if name:
+                            f.write("- %s\n" % name)
+                        for line in lines:
+                            f.write("  - %s\n" % line)
+            except OSError as e:
+                log.warning("写入结果文件失败：%s", e)
+        if FEISHU_WEBHOOK:
+            ok, reason = push_feishu(sections, overall_ok, title="中国移动周三充值日抢券")
+            log.info("[飞书] %s", "推送成功" if ok else "推送失败：%s" % reason)
+        return 0 if overall_ok else 2
 
     sections = []
     overall_ok = True

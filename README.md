@@ -16,7 +16,7 @@
 
 ## 获取凭证（只需一次）
 
-1. 手机装抓包工具（Proxyman / Charles / Stream 等），对 App 开启 HTTPS 抓包；
+1. 手机装抓包工具（Proxyman / Charles / Stream（IOS） 等），对 App 开启 HTTPS 抓包，最好用iphone，安卓不root的话很难把证书弄到系统目录；
 
 2. 打开中国移动 App → 我的 → 右上角「签到有礼」，进入签到页；
 
@@ -79,6 +79,26 @@ JSON，或直接设环境变量 `CMCC_APP_TOKEN` / `CMCC_PHONE` 等。
 推送为交互式卡片，成功绿色、有失败项红色，逐账号展示结果。
 
 
+
+## 周三充值日抢券（可选）
+
+`cmcc_wed.py` 实现 hlwyxhdhub `drawPrize` 抢券：SSO 换 HLWHD 会话（进页即每日登录）→
+`queryDrawPrizeInfo` 取服务器时间/场次/奖品 → 等到场次点连发抢券。
+`constId` 优先从接口响应动态提取，账号 JSON 里可用 `wed_const_id`/`constId` 覆盖。
+
+```bash
+python cmcc_auto.py --wed --dry-run     # 只查场次/奖品，不抢购
+python cmcc_auto.py --wed               # 等最近场次开抢
+python cmcc_auto.py --wed --at 08:00:00 # 指定场次
+```
+
+`.github/workflows/wed.yml` 已配置周三定时（北京 07:55 / 11:55 各一场，
+覆盖 08:00 / 12:00 场次；脚本按服务器时间校准等待，cron 延迟误差可吸收），
+也可在 Actions 页面手动 `Run workflow` 指定 `at`/`dry_run`。
+
+> ⚠️ 抢券依赖有效凭证：App 会话约 2 小时刷新一次，`app_token` 失效后
+> 所有接口（含抢券）都会报「APP登录状态已过期」。周三跑之前请确保
+> `CMCC_ACCOUNTS` 是近期抓包数据。
 
 ## 运行时机
 
