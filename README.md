@@ -1,6 +1,6 @@
 # 中国移动自动签到（GitHub Actions + 飞书推送）
 
-对接中国移动 App「签到领流量/话费」接口（wx.10086.cn / qwhdhub mark31 活动）：
+对接中国移动 App「签到有礼」接口（wx.10086.cn / qwhdhub mark31 活动）：
 
 1. `GET /qwhdsso/login` 取登录中转页 → `POST /qwhdsso/appTokenLogin` 用 App 票据（或缓存 jwt）换活动页跳转 URL
 2. 访问带 token 的活动页，服务端下发 `QWHD_SESSION_TOKEN` 会话
@@ -12,10 +12,21 @@
 - 结果推送到飞书自定义机器人（可选），支持多账号
 - 依赖：仅 `requests`（见 requirements.txt）
 
-## 配置
 
-凭证直接使用中国移动 App 抓包数据：抓 `appTokenLogin` 请求（POST
-`/qwhdsso/appTokenLogin`），把**请求体 JSON 原文**整个粘贴进来即可，脚本自动解析：
+
+## 获取凭证（只需一次）
+
+1. 手机装抓包工具（Proxyman / Charles / Stream 等），对 App 开启 HTTPS 抓包；
+
+2. 打开中国移动 App → 我的 → 右上角「签到有礼」，进入签到页；
+
+3. 在抓包记录中找到 `wx.10086.cn/qwhdsso/appTokenLogin` 这条 POST 请求（每2小时会重新一次，2小时内重复刷新页面不会再次请求，可能存在缓存了？）；
+
+4. 复制请求体里完整值填入 `config.json`数组里，github上就复制到CMCC_ACCOUNTS密钥变量里；
+
+5. 同一请求体里的 `provinceCode`、`cityCode` 一并照抄。
+
+   请求体示例：
 
 ```json
 {
@@ -36,7 +47,6 @@
 
 三种配置方式（优先级：`--config` 文件 > `CMCC_ACCOUNTS` > 独立环境变量）：
 
-**GitHub Actions（推荐）**：建 Secret `CMCC_ACCOUNTS`，直接粘贴抓包 JSON。
 多账号填 JSON 数组，或 `{"accounts": [...]}` 包裹：
 
 ```json
@@ -48,6 +58,8 @@
 
 **本地调试**：复制 `config.example.json` 为 `config.json`（已 gitignore）粘贴抓包
 JSON，或直接设环境变量 `CMCC_APP_TOKEN` / `CMCC_PHONE` 等。
+
+
 
 ## Secrets 列表
 
@@ -66,6 +78,8 @@ JSON，或直接设环境变量 `CMCC_APP_TOKEN` / `CMCC_PHONE` 等。
 
 推送为交互式卡片，成功绿色、有失败项红色，逐账号展示结果。
 
+
+
 ## 运行时机
 
 `.github/workflows/daily.yml` 内置两个 cron（UTC，均为每日）：
@@ -74,6 +88,8 @@ JSON，或直接设环境变量 `CMCC_APP_TOKEN` / `CMCC_PHONE` 等。
 - `14:10 UTC` = 北京 22:10（备份）
 
 可在 Actions 页面手动 `Run workflow` 立即测试。
+
+
 
 ## 本地调试
 
