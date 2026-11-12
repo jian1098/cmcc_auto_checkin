@@ -87,6 +87,28 @@ CRED_ERROR_MARKERS = ("APP登录状态已过期", "appTokenLogin 失败")
 def is_credential_error(exc: BaseException) -> bool:
     return any(k in str(exc) for k in CRED_ERROR_MARKERS)
 
+
+# 凭证失效状态文件：记录「上次是否已推送过失效提醒」，配合 GitHub Actions
+# Cache 跨运行持久化，实现只在状态变化时推送（失效→推一次，恢复→推一次）。
+CRED_STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                               ".cmcc_cred_state.json")
+
+
+def load_cred_dead():
+    try:
+        with open(CRED_STATE_FILE, encoding="utf-8") as f:
+            return bool(json.load(f).get("dead"))
+    except Exception:
+        return False
+
+
+def save_cred_dead(dead):
+    try:
+        with open(CRED_STATE_FILE, "w", encoding="utf-8") as f:
+            json.dump({"dead": dead}, f)
+    except OSError as e:
+        log.warning("凭证状态文件写入失败：%s", e)
+
 FEISHU_WEBHOOK = os.environ.get("FEISHU_WEBHOOK", "").strip()
 RESULT_FILE = os.environ.get("RESULT_FILE", "").strip()
 
@@ -691,10 +713,22 @@ def main() -> int:
             sections.append((name, lines))
             if not ok:
                 overall_ok = False
+        was_dead = load_cred_dead()
         if cred_dead:
+            save_cred_dead(True)
+        elif overall_ok:
+            save_cred_dead(False)
+        if cred_dead and was_dead:
+            log.warning("凭证仍失效（已推送过提醒），本轮静默跳过")
+        elif cred_dead:
             log.warning("凭证已失效，本轮保活全部跳过，推送提醒更新 CMCC_ACCOUNTS")
             if FEISHU_WEBHOOK:
                 ok, reason = push_feishu(sections, False, title="中国移动会话保活-凭证失效")
+                log.info("[飞书] %s", "推送成功" if ok else "推送失败：%s" % reason)
+        elif was_dead and overall_ok:
+            log.info("凭证已恢复，推送恢复通知")
+            if FEISHU_WEBHOOK:
+                ok, reason = push_feishu(sections, True, title="中国移动会话保活-凭证已恢复")
                 log.info("[飞书] %s", "推送成功" if ok else "推送失败：%s" % reason)
         elif not overall_ok and FEISHU_WEBHOOK:
             # 保活高频运行（每 30 分钟），成功不推送避免刷屏；
@@ -748,7 +782,14 @@ def main() -> int:
                             f.write("  - %s\n" % line)
             except OSError as e:
                 log.warning("写入结果文件失败：%s", e)
+        was_dead = load_cred_dead()
         if cred_dead:
+            save_cred_dead(True)
+        elif overall_ok:
+            save_cred_dead(False)
+        if cred_dead and was_dead:
+            log.warning("凭证仍失效（已推送过提醒），本轮静默跳过")
+        elif cred_dead:
             log.warning("凭证已失效，本轮抢券全部跳过，推送提醒更新 CMCC_ACCOUNTS")
             if FEISHU_WEBHOOK:
                 ok, reason = push_feishu(sections, False, title="中国移动周三充值日抢券-凭证失效")
@@ -793,7 +834,14 @@ def main() -> int:
         except OSError as e:
             log.warning("写入结果文件失败：%s", e)
 
+    was_dead = load_cred_dead()
     if cred_dead:
+        save_cred_dead(True)
+    elif overall_ok:
+        save_cred_dead(False)
+    if cred_dead and was_dead:
+        log.warning("凭证仍失效（已推送过提醒），本轮静默跳过")
+    elif cred_dead:
         log.warning("凭证已失效，本轮签到全部跳过，推送提醒更新 CMCC_ACCOUNTS")
         if FEISHU_WEBHOOK:
             ok, reason = push_feishu(sections, False, title="中国移动每日签到-凭证失效")

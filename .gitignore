@@ -2,3 +2,4 @@ __pycache__/
 *.pyc
 config.json
 .cmcc_jwt_cache_*.json
+.cmcc_cred_state.json

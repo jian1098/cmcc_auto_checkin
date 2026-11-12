@@ -36,6 +36,13 @@ jobs:
       - name: 检出仓库
         uses: actions/checkout@v4
 
+      - name: 恢复凭证状态缓存
+        uses: actions/cache/restore@v4
+        with:
+          path: .cmcc_cred_state.json
+          key: cmcc-cred-state-${{ github.run_id }}
+          restore-keys: cmcc-cred-state-
+
       - name: 安装依赖
         run: python3 -m pip install --user -r requirements.txt
 
@@ -77,3 +84,15 @@ jobs:
           else
             echo "- 未产出结论文案，请查看上方日志" >> "$GITHUB_STEP_SUMMARY"
           fi
+
+      - name: 保存凭证状态缓存
+        if: always()
+        run: |
+          [ -f .cmcc_cred_state.json ] || echo '{"dead": false}' > .cmcc_cred_state.json
+          echo "cred_state=$(cat .cmcc_cred_state.json)"
+      - name: 写入凭证状态缓存
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .cmcc_cred_state.json
+          key: cmcc-cred-state-${{ github.run_id }}
