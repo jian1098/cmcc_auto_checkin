@@ -692,7 +692,10 @@ def main() -> int:
             if not ok:
                 overall_ok = False
         if cred_dead:
-            log.warning("凭证已失效，本轮保活全部跳过（不推送，等待更新凭证）")
+            log.warning("凭证已失效，本轮保活全部跳过，推送提醒更新 CMCC_ACCOUNTS")
+            if FEISHU_WEBHOOK:
+                ok, reason = push_feishu(sections, False, title="中国移动会话保活-凭证失效")
+                log.info("[飞书] %s", "推送成功" if ok else "推送失败：%s" % reason)
         elif not overall_ok and FEISHU_WEBHOOK:
             # 保活高频运行（每 30 分钟），成功不推送避免刷屏；
             # 仅真实失败（网络/接口异常）推红卡提醒
@@ -746,7 +749,10 @@ def main() -> int:
             except OSError as e:
                 log.warning("写入结果文件失败：%s", e)
         if cred_dead:
-            log.warning("凭证已失效，本轮抢券全部跳过（不推送，等待更新凭证）")
+            log.warning("凭证已失效，本轮抢券全部跳过，推送提醒更新 CMCC_ACCOUNTS")
+            if FEISHU_WEBHOOK:
+                ok, reason = push_feishu(sections, False, title="中国移动周三充值日抢券-凭证失效")
+                log.info("[飞书] %s", "推送成功" if ok else "推送失败：%s" % reason)
         elif FEISHU_WEBHOOK:
             ok, reason = push_feishu(sections, overall_ok, title="中国移动周三充值日抢券")
             log.info("[飞书] %s", "推送成功" if ok else "推送失败：%s" % reason)
@@ -788,7 +794,10 @@ def main() -> int:
             log.warning("写入结果文件失败：%s", e)
 
     if cred_dead:
-        log.warning("凭证已失效，本轮签到全部跳过（不推送，等待更新凭证）")
+        log.warning("凭证已失效，本轮签到全部跳过，推送提醒更新 CMCC_ACCOUNTS")
+        if FEISHU_WEBHOOK:
+            ok, reason = push_feishu(sections, False, title="中国移动每日签到-凭证失效")
+            log.info("[飞书] %s", "推送成功" if ok else "推送失败：%s" % reason)
     elif FEISHU_WEBHOOK:
         ok, reason = push_feishu(sections, overall_ok)
         log.info("[飞书] %s", "推送成功" if ok else "推送失败：%s" % reason)
