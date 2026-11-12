@@ -78,6 +78,15 @@ REQUEST_TIMEOUT = 30
 MAX_RETRY = 3
 RETRY_BACKOFF = 2.0
 
+# 凭证熔断特征：appTokenLogin 认证失败（App 会话过期）时，所有依赖会话的
+# 操作（签到/抢券/保活）都必然失败，按熔断处理——本轮静默跳过、不推送，
+# 等 CMCC_ACCOUNTS 更新后自动恢复。
+CRED_ERROR_MARKERS = ("APP登录状态已过期", "appTokenLogin 失败")
+
+
+def is_credential_error(exc: BaseException) -> bool:
+    return any(k in str(exc) for k in CRED_ERROR_MARKERS)
+
 FEISHU_WEBHOOK = os.environ.get("FEISHU_WEBHOOK", "").strip()
 RESULT_FILE = os.environ.get("RESULT_FILE", "").strip()
 
@@ -659,6 +668,7 @@ def main() -> int:
     if args.keepalive:
         sections = []
         overall_ok = True
+        cred_dead = False
         single = len(accounts) == 1
         for acc in accounts:
             name = "" if single else acc.tag
@@ -669,13 +679,21 @@ def main() -> int:
                 lines = [f"会话保活成功（{tok.split('D')[0] if tok else '?'}…）"]
                 ok = True
             except Exception as e:
-                log.exception("[%s] 保活失败: %s", acc.tag, e)
-                ok, lines = False, [f"保活失败: {e}"]
+                if is_credential_error(e):
+                    cred_dead = True
+                    ok, lines = True, ["凭证已失效（App 会话过期），本轮跳过；"
+                                       "更新 CMCC_ACCOUNTS 后自动恢复"]
+                    log.warning("[%s] 凭证已失效，保活跳过", acc.tag)
+                else:
+                    log.exception("[%s] 保活失败: %s", acc.tag, e)
+                    ok, lines = False, [f"保活失败: {e}"]
             log.info("[%s] %s", acc.tag, lines[0])
             sections.append((name, lines))
             if not ok:
                 overall_ok = False
-        if FEISHU_WEBHOOK:
+        if cred_dead:
+            log.warning("凭证已失效，本轮保活全部跳过（不推送，等待更新凭证）")
+        elif FEISHU_WEBHOOK:
             ok, reason = push_feishu(sections, overall_ok, title="中国移动会话保活")
             log.info("[飞书] %s", "推送成功" if ok else "推送失败：%s" % reason)
         return 0 if overall_ok else 2
@@ -689,6 +707,7 @@ def main() -> int:
             return 1
         sections = []
         overall_ok = True
+        cred_dead = False
         single = len(accounts) == 1
         for acc in accounts:
             name = "" if single else acc.tag
@@ -700,8 +719,14 @@ def main() -> int:
                     force=args.force)
                 ok = True   # 未命中/库存不足属正常结果，不算失败
             except Exception as e:
-                log.exception("[%s] 执行失败: %s", acc.tag, e)
-                ok, lines = False, [f"执行异常: {e}"]
+                if is_credential_error(e):
+                    cred_dead = True
+                    ok, lines = True, ["凭证已失效（App 会话过期），本轮跳过；"
+                                       "更新 CMCC_ACCOUNTS 后自动恢复"]
+                    log.warning("[%s] 凭证已失效，抢券跳过", acc.tag)
+                else:
+                    log.exception("[%s] 执行失败: %s", acc.tag, e)
+                    ok, lines = False, [f"执行异常: {e}"]
             log.info("[%s] 结果：\n%s", acc.tag, "\n".join(lines))
             sections.append((name, lines))
             if not ok:
@@ -716,13 +741,16 @@ def main() -> int:
                             f.write("  - %s\n" % line)
             except OSError as e:
                 log.warning("写入结果文件失败：%s", e)
-        if FEISHU_WEBHOOK:
+        if cred_dead:
+            log.warning("凭证已失效，本轮抢券全部跳过（不推送，等待更新凭证）")
+        elif FEISHU_WEBHOOK:
             ok, reason = push_feishu(sections, overall_ok, title="中国移动周三充值日抢券")
             log.info("[飞书] %s", "推送成功" if ok else "推送失败：%s" % reason)
         return 0 if overall_ok else 2
 
     sections = []
     overall_ok = True
+    cred_dead = False
     single = len(accounts) == 1
     for acc in accounts:
         name = "" if single else acc.tag
@@ -730,8 +758,14 @@ def main() -> int:
         try:
             ok, lines = run_account(acc, dry_run=args.dry_run, claim=args.claim)
         except Exception as e:
-            log.exception("[%s] 执行失败: %s", acc.tag, e)
-            ok, lines = False, [f"执行异常: {e}"]
+            if is_credential_error(e):
+                cred_dead = True
+                ok, lines = True, ["凭证已失效（App 会话过期），本轮跳过；"
+                                   "更新 CMCC_ACCOUNTS 后自动恢复"]
+                log.warning("[%s] 凭证已失效，签到跳过", acc.tag)
+            else:
+                log.exception("[%s] 执行失败: %s", acc.tag, e)
+                ok, lines = False, [f"执行异常: {e}"]
         log.info("[%s] 结果：\n%s", acc.tag, "\n".join(lines))
         sections.append((name, lines))
         if not ok:
@@ -749,7 +783,9 @@ def main() -> int:
         except OSError as e:
             log.warning("写入结果文件失败：%s", e)
 
-    if FEISHU_WEBHOOK:
+    if cred_dead:
+        log.warning("凭证已失效，本轮签到全部跳过（不推送，等待更新凭证）")
+    elif FEISHU_WEBHOOK:
         ok, reason = push_feishu(sections, overall_ok)
         log.info("[飞书] %s", "推送成功" if ok else "推送失败：%s" % reason)
     else:
