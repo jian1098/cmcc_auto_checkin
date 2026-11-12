@@ -103,7 +103,7 @@ JSON，或直接设环境变量 `CMCC_APP_TOKEN` / `CMCC_PHONE` 等。
 
 推送为交互式卡片，成功绿色、有失败项红色，逐账号展示结果。
 
-![飞书通知样式](resource\feishu_notice.png)
+![飞书通知样式](resource/feishu_notice.png)
 
 
 
