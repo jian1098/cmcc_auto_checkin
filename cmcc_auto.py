@@ -693,9 +693,13 @@ def main() -> int:
                 overall_ok = False
         if cred_dead:
             log.warning("凭证已失效，本轮保活全部跳过（不推送，等待更新凭证）")
-        elif FEISHU_WEBHOOK:
+        elif not overall_ok and FEISHU_WEBHOOK:
+            # 保活高频运行（每 30 分钟），成功不推送避免刷屏；
+            # 仅真实失败（网络/接口异常）推红卡提醒
             ok, reason = push_feishu(sections, overall_ok, title="中国移动会话保活")
             log.info("[飞书] %s", "推送成功" if ok else "推送失败：%s" % reason)
+        elif overall_ok:
+            log.info("保活成功，跳过飞书推送（高频任务不刷屏）")
         return 0 if overall_ok else 2
 
     # --wed：周三充值日抢券专用模式（代替每日签到）
