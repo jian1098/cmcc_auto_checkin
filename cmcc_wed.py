@@ -8,9 +8,9 @@
   3. 等到目标场次（服务器时钟校准，开火前刷新会话保活）
   4. drawPrize {"constId": ...}              连发抢券，命中/库存尽/打完预算即停
 
-constId 为抓包确认的请求体字段（不带会报参数类错误），优先从
-queryDrawPrizeInfo / rec_login 响应里动态提取；提取不到时依次回落到
-账号配置的 wed_const_id、抓包样本常量。
+constId 为抓包确认的请求体字段：它是前端 _zw 风控 SDK 生成的设备指纹
+（window.__constId），非服务端下发，按设备长期有效；账号 JSON 里可用
+wed_const_id/constId 覆盖，缺省用抓包样本值。
 
 用法（由 cmcc_auto.py --wed 调用，也可独立运行）:
   python cmcc_wed.py --config config.json --dry-run   # 只查场次/奖品，不发抢购
@@ -29,12 +29,16 @@ from cmcc_auto import BASE, Account, api_headers, exchange_session
 
 log = logging.getLogger("cmcc_wed")
 
-# 抓包活动页地址（pageId/channelId 为活动公开配置；跟踪参数 lc_traceid/yx/redCode 不需要）
-WED_ACT_URL = ("https://wx.10086.cn/hlwyxhdhub/act-wedrecharge/index.html"
+# 活动页地址（pageId/channelId 为活动公开配置；跟踪参数不需要）。
+# 注意必须用 /1024101716 数字路径路由——index.html 页面路由访问不下发
+# HLWHD_SESSION_TOKEN（实测），数字路径才是 SSO 正确入口。
+WED_ACT_URL = ("https://wx.10086.cn/hlwyxhdhub/act-wedrecharge/1024101716"
                "?pageId=1849008675699650560&channelId=P00000132544")
 API_WED = BASE + "/hlwyxhdhub/api/wedrecharge"
 
-# 抓包样本 constId（2026-11-11 抓包），仅作动态提取失败时的兜底
+# 抓包样本 constId（2026-11-11 抓包）。constId 是前端 _zw 风控 SDK 生成的
+# 设备指纹 ID（window.__constId，调 yxfk.market.chinamobile.com udid 接口），
+# 非服务端下发、接口响应里也找不到，按设备长期有效，直接沿用抓包值。
 FALLBACK_CONST_ID = "6af4012fDavEcUd5WdN1uW2TOGar1etCuD0f9671"
 
 SEK_STOP_CODES = {"160002"}   # 奖品库存不足
@@ -50,44 +54,6 @@ def wed_api(s, referer: str, path: str, payload: dict | None = None) -> dict:
     if resp.get("code") != "0":
         raise RuntimeError(f"{path} 失败: {resp.get('code')} {resp.get('msg')}")
     return resp.get("data") or {}
-
-
-def _find_key(obj, key: str):
-    """递归在 JSON 结构里找第一个指定 key 的值。"""
-    if isinstance(obj, dict):
-        if key in obj and obj[key]:
-            return obj[key]
-        for v in obj.values():
-            found = _find_key(v, key)
-            if found is not None:
-                return found
-    elif isinstance(obj, list):
-        for v in obj:
-            found = _find_key(v, key)
-            if found is not None:
-                return found
-    return None
-
-
-def fetch_const_id(s, referer: str) -> str:
-    """从场次/奖品信息接口动态提取 constId。"""
-    for path in ("queryDrawPrizeInfo",):
-        try:
-            data = wed_api(s, referer, path)
-        except Exception:
-            continue
-        cid = _find_key(data, "constId")
-        if cid:
-            return str(cid)
-    # 兜底：rec_login 原始响应（不走 wed_api 的 code 校验）
-    try:
-        r = s.get(f"{API_WED}/_pub/rec_login", timeout=core.REQUEST_TIMEOUT)
-        cid = _find_key(r.json().get("data"), "constId")
-        if cid:
-            return str(cid)
-    except Exception:
-        pass
-    return ""
 
 
 def server_time(s, referer: str) -> tuple[float, dict]:
@@ -120,10 +86,9 @@ def seckill_run(acc: Account, dry_run: bool, at: str | None = None,
         nonlocal s, referer
         s, referer = exchange_session(acc, act_url=WED_ACT_URL)
 
-    # constId：账号配置 > 动态提取 > 抓包兜底
-    const_id = getattr(acc, "wed_const_id", "") or ""
-    if not const_id:
-        const_id = fetch_const_id(s, referer) or FALLBACK_CONST_ID
+    # constId 是前端 _zw 风控 SDK 的设备指纹（非服务端下发）：
+    # 账号配置 wed_const_id/constId > 抓包样本兜底
+    const_id = getattr(acc, "wed_const_id", "") or FALLBACK_CONST_ID
     log.info("[秒杀] constId: %s", const_id[:20] + ("..." if len(const_id) > 20 else ""))
 
     now_sv, info = server_time(s, referer)

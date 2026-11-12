@@ -83,8 +83,9 @@ JSON，或直接设环境变量 `CMCC_APP_TOKEN` / `CMCC_PHONE` 等。
 ## 周三充值日抢券（可选）
 
 `cmcc_wed.py` 实现 hlwyxhdhub `drawPrize` 抢券：SSO 换 HLWHD 会话（进页即每日登录）→
-`queryDrawPrizeInfo` 取服务器时间/场次/奖品 → 等到场次点连发抢券。
-`constId` 优先从接口响应动态提取，账号 JSON 里可用 `wed_const_id`/`constId` 覆盖。
+`queryDrawPrizeInfo`/`rec_login` 取服务器时间/场次/奖品 → 等到场次点连发抢券。
+`constId` 是前端 _zw 风控 SDK 的设备指纹（`window.__constId`），按设备长期有效，
+账号 JSON 里可用 `wed_const_id`/`constId` 覆盖，缺省用抓包样本值。
 
 ```bash
 python cmcc_auto.py --wed --dry-run     # 只查场次/奖品，不抢购
