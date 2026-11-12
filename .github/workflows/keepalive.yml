@@ -3,9 +3,10 @@ name: 中国移动会话保活
 on:
   schedule:
     # app_token（App 会话）服务端寿命约 2 小时，定时 appTokenLogin 可重置计时。
-    # 每小时跑一次保活，保证 CMCC_ACCOUNTS 里的 token 长期有效，无需反复抓包。
-    # cron 为 UTC，:37 分错开签到（22:10/14:10）与抢券时段。
-    - cron: "37 * * * *"
+    # 每 30 分钟保活一次（留足 GitHub cron 延迟/丢弃的容错余量），
+    # 保证 CMCC_ACCOUNTS 里的 token 长期有效，无需反复抓包。
+    # cron 为 UTC，:07/:37 分错开签到（22:10/14:10）与抢券时段。
+    - cron: "7,37 * * * *"
   workflow_dispatch:
 
 permissions:
