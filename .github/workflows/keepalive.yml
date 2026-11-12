@@ -19,13 +19,17 @@ concurrency:
 jobs:
   keepalive:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # 含 1~10 分钟随机延迟 + 保活请求，留足余量
+    timeout-minutes: 15
     steps:
       - name: 检出仓库
         uses: actions/checkout@v4
 
       - name: 安装依赖
         run: python3 -m pip install --user -r requirements.txt
+
+      - name: 随机延迟（防风控指纹）
+        run: sleep $((RANDOM % 540 + 60))
 
       - name: 执行会话保活
         env:
