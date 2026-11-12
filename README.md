@@ -1,5 +1,16 @@
 # 中国移动自动签到（GitHub Actions + 飞书推送）
 
+> ## ⚠️ 本项目已作废 / DEPRECATED
+>
+> **停止维护，不建议继续使用。**
+>
+> 原因：凭证 `app_token` 本质是中国移动 App 的 `JSESSIONID` 会话票据，
+> 服务端强制约 **2 小时**过期，且无法通过自动化手段长期续期——
+> 定时保活只能延缓、不能根除失效；App 端重新登录或被踢下线后
+> 必须重新抓包更新 `CMCC_ACCOUNTS`，实际维护成本高、稳定性差。
+> 如需使用请自行承担凭证失效导致的签到/抢券失败风险，
+> 代码仅作技术参考保留。
+
 对接中国移动 App「签到有礼」接口（wx.10086.cn / qwhdhub mark31 活动）：
 
 1. `GET /qwhdsso/login` 取登录中转页 → `POST /qwhdsso/appTokenLogin` 用 App 票据（或缓存 jwt）换活动页跳转 URL
@@ -73,12 +84,16 @@ JSON，或直接设环境变量 `CMCC_APP_TOKEN` / `CMCC_PHONE` 等。
 > 抓包即可长期使用；仅当 App 退出登录/被踢下线（保活也会失败）时才需重新抓包。
 > jwt 缓存失效且 app_token 也失效时签到会报「appTokenLogin 失败」。
 
-### 会话保活（keepalive.yml）
+
+
+## 会话保活（keepalive.yml）
 
 `app_token` 会话约 2 小时过期，但每次成功 `appTokenLogin` 都会刷新服务端计时
 （已实测：每 25 分钟保活一次，超过 2 小时仍存活）。`.github/workflows/keepalive.yml`
 每小时（UTC :37）执行 `python cmcc_auto.py --keepalive` 仅做会话兑换不签到，
 保证 Secret 里的 token 长期有效。本地也可手动 `python cmcc_auto.py --keepalive` 验证。
+
+
 
 ## 飞书机器人
 
@@ -87,6 +102,8 @@ JSON，或直接设环境变量 `CMCC_APP_TOKEN` / `CMCC_PHONE` 等。
 3. 复制 Webhook 地址填入 Secret `FEISHU_WEBHOOK`
 
 推送为交互式卡片，成功绿色、有失败项红色，逐账号展示结果。
+
+![飞书通知样式](resource\feishu_notice.png)
 
 
 
@@ -110,6 +127,8 @@ python cmcc_auto.py --wed --at 08:00:00 # 指定场次
 > ⚠️ 抢券依赖有效凭证：App 会话约 2 小时刷新一次，`app_token` 失效后
 > 所有接口（含抢券）都会报「APP登录状态已过期」。周三跑之前请确保
 > `CMCC_ACCOUNTS` 是近期抓包数据。
+
+
 
 ## 运行时机
 
