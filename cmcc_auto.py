@@ -603,6 +603,8 @@ def main() -> int:
                         help="签到后自动领取累计/连签奖励（默认开启）")
     parser.add_argument("--no-claim", dest="claim", action="store_false", help="跳过领奖，只签到")
     parser.add_argument("--delay", type=int, default=0, metavar="N", help="启动前随机延迟 0~N 秒")
+    parser.add_argument("--keepalive", action="store_true",
+                        help="仅换会话保活（不签到），用于定时续命 app_token 会话")
     # ---- 周三充值日抢券（--wed 专用模式，代替每日签到）----
     parser.add_argument("--wed", action="store_true",
                         help="周三充值日抢券模式（hlwyxhdhub drawPrize），代替每日签到")
@@ -650,6 +652,33 @@ def main() -> int:
             log.error("[%s] %s", tag, err)
         log.error("参考 config.example.json 填写，或设置对应环境变量")
         return 1
+
+    # --keepalive：仅 exchange_session 换会话续命，不执行签到/抢券。
+    # app_token 会话服务端寿命约 2 小时，定时调用 appTokenLogin 可重置计时，
+    # 配合每小时的 GitHub Actions 任务实现 token 长期自续。
+    if args.keepalive:
+        sections = []
+        overall_ok = True
+        single = len(accounts) == 1
+        for acc in accounts:
+            name = "" if single else acc.tag
+            try:
+                s, referer = exchange_session(acc)
+                tok = next((c.value for c in s.cookies
+                            if c.name.endswith("SESSION_TOKEN")), "")
+                lines = [f"会话保活成功（{tok.split('D')[0] if tok else '?'}…）"]
+                ok = True
+            except Exception as e:
+                log.exception("[%s] 保活失败: %s", acc.tag, e)
+                ok, lines = False, [f"保活失败: {e}"]
+            log.info("[%s] %s", acc.tag, lines[0])
+            sections.append((name, lines))
+            if not ok:
+                overall_ok = False
+        if FEISHU_WEBHOOK:
+            ok, reason = push_feishu(sections, overall_ok, title="中国移动会话保活")
+            log.info("[飞书] %s", "推送成功" if ok else "推送失败：%s" % reason)
+        return 0 if overall_ok else 2
 
     # --wed：周三充值日抢券专用模式（代替每日签到）
     if args.wed:

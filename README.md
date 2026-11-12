@@ -68,7 +68,17 @@ JSON，或直接设环境变量 `CMCC_APP_TOKEN` / `CMCC_PHONE` 等。
 | `CMCC_ACCOUNTS` | ✅ | 抓包 `appTokenLogin` 请求体 JSON 原文；多账号为 JSON 数组 |
 | `FEISHU_WEBHOOK` | 可选 | 飞书群自定义机器人 Webhook（不要勾选签名校验） |
 
-> `app_token` 即 App 登录会话凭证：App 保持登录则长期有效，jwt 续期请求会同时携带它；App 重新登录/退出后需重新抓包更新。jwt 缓存失效且 app_token 也失效时签到会报「appTokenLogin 失败」。
+> `app_token` 即 App 登录会话凭证，服务端寿命约 2 小时。**但定时
+> `appTokenLogin` 可重置计时**：`keepalive.yml` 每小时自动保活，配合一次
+> 抓包即可长期使用；仅当 App 退出登录/被踢下线（保活也会失败）时才需重新抓包。
+> jwt 缓存失效且 app_token 也失效时签到会报「appTokenLogin 失败」。
+
+### 会话保活（keepalive.yml）
+
+`app_token` 会话约 2 小时过期，但每次成功 `appTokenLogin` 都会刷新服务端计时
+（已实测：每 25 分钟保活一次，超过 2 小时仍存活）。`.github/workflows/keepalive.yml`
+每小时（UTC :37）执行 `python cmcc_auto.py --keepalive` 仅做会话兑换不签到，
+保证 Secret 里的 token 长期有效。本地也可手动 `python cmcc_auto.py --keepalive` 验证。
 
 ## 飞书机器人
 

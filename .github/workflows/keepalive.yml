@@ -1,0 +1,33 @@
+name: 中国移动会话保活
+
+on:
+  schedule:
+    # app_token（App 会话）服务端寿命约 2 小时，定时 appTokenLogin 可重置计时。
+    # 每小时跑一次保活，保证 CMCC_ACCOUNTS 里的 token 长期有效，无需反复抓包。
+    # cron 为 UTC，:37 分错开签到（22:10/14:10）与抢券时段。
+    - cron: "37 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cmcc-keepalive
+  cancel-in-progress: false
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
+      - name: 安装依赖
+        run: python3 -m pip install --user -r requirements.txt
+
+      - name: 执行会话保活
+        env:
+          CMCC_ACCOUNTS: ${{ secrets.CMCC_ACCOUNTS }}
+          FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
+        run: python3 cmcc_auto.py --keepalive
